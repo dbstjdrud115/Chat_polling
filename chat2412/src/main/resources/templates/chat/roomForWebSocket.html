@@ -1,0 +1,113 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+
+<div class="chat">
+    <form class="chat__write-message"onsubmit="Chat__writeMessage(this); return false;">
+        <input type="text" placeholder="작성자" name="authorName" />
+        <input type="text" placeholder="내용을 입력해주세요." name="content" />
+        <input type="submit" value="작성" />
+    </form>
+    <div class="chat__message-box">
+        <ul class="chat__message-ul"></ul>
+    </div>
+</div>
+
+<script>
+
+    function fetchPost(url, data) {
+      return fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(data), // 데이터를 JSON 문자열로 변환
+      }).then((response) => response.json());
+    }
+
+    function fetchGet(url, data) {
+      // 쿼리 파라미터 생성 (예: key1=value1&key2=value2)
+      let query = Object.keys(data)
+              .map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(data[k]))
+              .join("&");
+      return fetch(url + "?" + query, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      }).then((response) => response.json());
+    }
+
+    function Chat__writeMessage(form) {
+      form.authorName.value = form.authorName.value.trim();
+      if (form.authorName.value.length == 0) {
+        alert("작성자를 입력해주세요.");
+        form.authorName.focus();
+        return;
+      }
+
+      form.content.value = form.content.value.trim();
+      if (form.content.value.length == 0) {
+        form.content.focus();
+        return;
+      }
+
+      fetchPost("/chat/writeMessage", {
+        authorName: form.authorName.value,
+        content: form.content.value,
+      }).then(console.log);
+
+      form.content.value = "";
+      form.content.focus();
+    }
+
+    //서버에서 데이터 수신 >> 화면에 표시
+    let Chat__lastLoadedId = 0;
+    function Chat__loadMore() {
+      fetchGet("/chat/messages", {fromId: Chat__lastLoadedId})
+              .then(body => {
+                Chat__drawMessages(body.data.chatMessages);
+              });
+    }
+
+    //데이터 수신
+    const Chat__elMessageUl = document.querySelector('.chat__message-ul');
+    function Chat__drawMessages(messages) {
+      if (messages.length > 0) {
+        Chat__lastLoadedId = messages[messages.length - 1].id;
+      }
+      messages.forEach((message) => {
+        Chat__elMessageUl
+                .insertAdjacentHTML(
+                        "afterBegin",
+                        `<li>${message.authorName} : ${message.content}</li>`
+                );
+      });
+    }
+    Chat__loadMore();
+
+
+<!--    const sse = new EventSource("/sse/connect");
+    alert("테스트");
+    sse.addEventListener('chat__messageAdded', e => {
+    Chat__loadMore();
+    });-->
+
+    <!--SSE와 비슷하게 WS 연결용 상태를 설정한다.
+        근데... 구글링을 해보니까, WS 구현방식이 상이한것 같은데,
+        그냥 WS연결을 사용한다는 개념만 이해하도록 하자.
+    -->
+    const socket = new SockJS("/ws");
+    const stompClient = Stomp.over(socket);
+
+    <!--SSE와 비슷하게 WS 연결용 상태를 설정한다. -->
+     stompClient.connect({}, function (frame) {
+        console.log("Connected: " + frame);
+        stompClient.subscribe(`/topic/chat/writeMessage`, function (data) {
+        console.log(data.body)
+        Chat__loadMore();
+    });
+  });
+
+</script>

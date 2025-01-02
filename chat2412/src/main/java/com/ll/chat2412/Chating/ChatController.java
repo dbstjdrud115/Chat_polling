@@ -6,6 +6,7 @@ import com.ll.chat2412.Chating.dto.writeMessageRequest;
 import com.ll.chat2412.Chating.dto.writeMessageResponse;
 import com.ll.chat2412.SSE.SseEmitters;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,12 +21,21 @@ public class ChatController {
 
     //과거 메세지 이력까지 꺼내와야하기 때문에 배열구조를 띄고있으며 게시물id, 유저명,입력내용,날짜가 포함되어있다.
     private List<ChatMessage> chatMessages = new ArrayList<>();
+
+    //SSE 연결요소들을 배열로 묶어 처리하는, 강사님이 만든 클래스
     private final SseEmitters sseEmitters;
+
+    //
+    private final SimpMessagingTemplate messagingTemplate;
+
+
     //처음 사용자가 화면에서 입력한 값이 표시되지 않는데, 이는 subList(x+1, size())가
     //처음에는 (1,1)이기에 값을 반환하지 않기에 발생하게 된다.
     //이 경우를 방지하기 위해, 사용자가 입력하더라도 같은 값이 나오게 되는 맨 처음 입력에 대해
     //firstCnt라는 변수를 추가하였다.
     private int firstCnt = 0;
+
+
 
     @PostMapping("/writeMessage")
     @ResponseBody
@@ -34,7 +44,17 @@ public class ChatController {
         //매개변수 2개의 ChatMessage는 새 id로 데이터를 생성한다.
         ChatMessage ch = new ChatMessage(req.getAuthorName(), req.getContent());
         chatMessages.add(ch);
+
+        //SSE에서 사용하는 방식.
+        /* 1. 화면에서 EventSource를 사용하여, SSE연결한다.
+        *  2. 메시지를 입력하면 Emitters.noti가 실행되는데,
+        *      이는 emitters에 있는 모든 emitter에게 화면에서 설정한 chat__messageAdded 이벤트를 회신해준다
+        *  3. chat__messageAdded 실행시 get으로 데이터를 가져오는 로직이 수행되도록 설계되어있다.
+        * */
         sseEmitters.noti("chat__messageAdded");
+
+        //WebSocket에서 사용하는 방식.
+        messagingTemplate.convertAndSend("/topic/chat/writeMessage", new writeMessageResponse(ch));
 
         return new RsData("200", "OK", new writeMessageResponse(ch));
     }
@@ -96,5 +116,10 @@ public class ChatController {
     @GetMapping("/roomForSSE")
     public String roomForSSE() {
         return "chat/roomForSSE";
+    }
+
+    @GetMapping("/roomForWebSocket")
+    public String roomForWebSocket() {
+        return "chat/roomForWebSocket";
     }
 }
